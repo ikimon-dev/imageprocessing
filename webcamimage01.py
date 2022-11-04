@@ -8,15 +8,26 @@ def nothing(x):
 
 if __name__ == '__main__':
 
-    x_dis, y_dis = (237, 152)  # ARマーカー間の実寸
-    size = 3  # 表示画像サイズ＝ARマーカー間の実寸×size
-    th = 130  # 閾値の初期値
+    x_dis, y_dis = (207, 122)  # ARマーカー間の実寸
+    size = 2  # 表示画像サイズ＝ARマーカー間の実寸×size
+    th = 50  # 閾値の初期値
+
+    margin = -8
+
+    blur = 15  # ぼかし
+
+    ksize = 80
 
     cap = cv2.VideoCapture(2)
     aruco = cv2.aruco
 
+    w = 0
+    h = 0
+
     cv2.namedWindow('image_gray')
+    cv2.namedWindow('Frame01')
     cv2.createTrackbar('threshold', 'image_gray', th, 256, nothing)
+    cv2.createTrackbar('ksize', 'Frame01', ksize, 500, nothing)
 
     while True:
 
@@ -48,19 +59,40 @@ if __name__ == '__main__':
 
             marker_coordinates = np.float32(m)
             true_coordinates = np.float32(
-                [[0, 0], [width, 0], [width, height], [0, height]])
+                [[-margin, -margin], [width+margin, -margin], [width+margin, height+margin], [-margin, height+margin]])
             mat = cv2.getPerspectiveTransform(
                 marker_coordinates, true_coordinates)  # 画像サイズを任意の大きさに合わせる
             img_trans = cv2.warpPerspective(img, mat, (width, height))
 
+            ksize = cv2.getTrackbarPos('ksize', 'Frame01')
+
+            blur_value = cv2.blur(img_trans, (ksize, ksize))
+            rij = img_trans/blur_value
+            index_1 = np.where(rij >= 0.98)
+            index_0 = np.where(rij < 0.98)
+            rij[index_0] = 0
+            rij[index_1] = 1
+
+            rij = img_trans/blur_value
+            index_1 = np.where(rij >= 1.00)  # 1以上の値があると邪魔なため
+            rij[index_1] = 1
+            rij_int = np.array(rij*255, np.uint8)  # 除算結果が実数値になるため整数に変換
+            rij_HSV = cv2.cvtColor(rij_int, cv2.COLOR_BGR2HSV)
+            ret, thresh = cv2.threshold(
+                rij_HSV[:, :, 2], 0, 255, cv2.THRESH_OTSU)
+            rij_HSV[:, :, 2] = thresh
+            rij_ret = cv2.cvtColor(rij_HSV, cv2.COLOR_HSV2BGR)
+
             # グレースケール画像へ変換
-            gray = cv2.cvtColor(img_trans, cv2.COLOR_BGR2GRAY)
+            gray = cv2.cvtColor(rij_ret, cv2.COLOR_BGR2GRAY)
+
+            # tmp = cv2.GaussianBlur(gray, (blur, blur), 0)
+
+            # エッジ検出
+            # gray_edge = cv2.Canny(gray, 200, 255)
 
             # 2値化
             th = cv2.getTrackbarPos('threshold', 'image_gray')
-
-            retval, bw = cv2.threshold(
-                gray, th, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
             _, bw = cv2.threshold(gray, th, 255, cv2.THRESH_BINARY_INV)
 
@@ -93,11 +125,45 @@ if __name__ == '__main__':
 
                     detect_count = detect_count + 1
 
+            cv2.putText(img_trans, "width={:.1f}mm".format(
+                w/x_ratio), (int(0), int(30)), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2)
+            cv2.putText(img_trans, "hight={:.1f}mm".format(
+                h/y_ratio), (int(0), int(50)), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2)
+
+            apple_x_size = w/x_ratio
+            apple_y_size = h/y_ratio
+
+            apple_pi = 3.14*(apple_x_size + apple_y_size)/2
+
+            if apple_pi < 230:
+                cv2.putText(img_trans, "apple size : SS", (int(0), int(
+                    80)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+
+            if apple_pi > 230 and apple_pi <= 260:
+                cv2.putText(img_trans, "apple size : S", (int(0), int(
+                    80)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+
+            if apple_pi > 260 and apple_pi <= 275:
+                cv2.putText(img_trans, "apple size : M", (int(0), int(
+                    80)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+
+            if apple_pi > 275 and apple_pi <= 290:
+                cv2.putText(img_trans, "apple size : L", (int(0), int(
+                    80)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+
+            if apple_pi > 290 and apple_pi <= 400:
+                cv2.putText(img_trans, "apple size : LL", (int(0), int(
+                    80)), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+
             # ウィンドウに出力
+
             cv2.imshow("Frame", frame)
+
+            cv2.imshow("Frame01", rij_ret)
             cv2.imshow("image_trans", img_trans)
 
             cv2.imshow("image_gray", bw)
+            # cv2.imshow("image_edge", gray_edge)
 
             key = cv2.waitKey(1)
             # Escキーを入力されたら画面を閉じる

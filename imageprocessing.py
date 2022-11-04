@@ -2,7 +2,7 @@
 import cv2
 import numpy as np
 # Webカメラを選択する。いくつか繋がっている場合は0の部分を変える。
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(2)
 # 画像の解像度を指定
 pixel = 0.178  # mm/pixel
 # 長さを測る高さを指定
